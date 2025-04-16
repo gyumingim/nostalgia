@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Three.js Carousel - 최적화 캡처</title>
+  <style>
+    body, html {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background-color: white;
+    }
+    canvas {
+      display: block;
+    }
+    .control-panel {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      background-color: rgba(255,255,255,0.8);
+      padding: 10px;
+      border-radius: 5px;
+      z-index: 10;
+    }
+    .capture-button {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      padding: 10px 20px;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      z-index: 10;
+    }
+    .capture-button:hover {
+      background-color: #45a049;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="control-panel">
+    <label for="scaleSelect">해상도 스케일:</label>
+    <select id="scaleSelect">
+      <option value="1">100%</option>
+      <option value="0.75">75%</option>
+      <option value="0.5" selected>50%</option>
+      <option value="0.3">30%</option>
+    </select>
+  </div>
+
+  <button class="capture-button" onclick="captureFrames()">30프레임 캡처</button>
+
+  <script type="module">
+    import * as THREE from 'https://unpkg.com/three@0.157.0/build/three.module.js';
+    import JSZip from 'https://cdn.skypack.dev/jszip';
+
+    let capturing = false;
+    let captureCount = 0;
+    const maxCaptures = 300;  // 캡처할 프레임 수
+    const zip = new JSZip();
+    const scaleSelect = document.getElementById('scaleSelect');
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 1, 2000);
+    camera.position.z = 800;
+
+    const renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      preserveDrawingBuffer: true,
+      alpha: true
+    });
+
+    scene.background = new THREE.Color('white');
+
+    // 초기 렌더 해상도 설정
+    let scaleFactor = parseFloat(scaleSelect.value);
+    function applyRendererSize() {
+      scaleFactor = parseFloat(scaleSelect.value);
+      renderer.setSize(window.innerWidth * scaleFactor, window.innerHeight * scaleFactor);
+      renderer.setPixelRatio(window.devicePixelRatio * scaleFactor);
+    }
+
+    applyRendererSize();
+    document.body.appendChild(renderer.domElement);
+
+    scaleSelect.addEventListener('change', applyRendererSize);
+
+    const imageSources = [
+      '2.webp', '3.webp', '4.webp', '5.webp', '6.webp',
+      '7.webp', '10.webp', '12.webp', '14.webp', '15.webp'
+    ];
+
+    const radius = 500;
+    const group = new THREE.Group();
+    const loader = new THREE.TextureLoader();
+
+    imageSources.forEach((src, index) => {
+      loader.load(
+        src,
+        (texture) => {
+          texture.encoding = THREE.sRGBEncoding;
+          texture.minFilter = THREE.LinearFilter;
+          texture.magFilter = THREE.LinearFilter;
+
+          const material = new THREE.MeshBasicMaterial({
+            map: texture,
+            side: THREE.DoubleSide,
+          });
+
+          const geometry = new THREE.PlaneGeometry(325, 325);
+          const mesh = new THREE.Mesh(geometry, material);
+          mesh.scale.x = -1;
+
+          const angle = (index / imageSources.length) * Math.PI * 2;
+          mesh.position.x = Math.cos(angle) * radius;
+          mesh.position.z = Math.sin(angle) * radius;
+          mesh.lookAt(0, 0, 0);
+
+          group.add(mesh);
+        },
+        undefined,
+        (error) => {
+          console.error('이미지 로드 실패:', error);
+        }
+      );
+    });
+
+    scene.add(group);
+
+    window.captureFrames = function () {
+      if (capturing) return;
+      capturing = true;
+      captureCount = 0;
+      zip.folder("frames");
+      console.log("🎬 캡처 시작");
+    };
+
+    const normalRotationSpeed = 0.015;
+    const captureRotationSpeed = 0.015;
+
+    function animate() {
+      requestAnimationFrame(animate);
+      group.rotation.y += capturing ? captureRotationSpeed : normalRotationSpeed;
+      renderer.render(scene, camera);
+
+      if (capturing && captureCount < maxCaptures) {
+        const dataURL = renderer.domElement.toDataURL('image/png'); // PNG로 저장
+        const base64 = dataURL.split(',')[1];
+        zip.file(`frames/frame_${String(captureCount).padStart(2, '0')}.png`, base64, { base64: true });
+        captureCount++;
+
+        if (captureCount === maxCaptures) {
+          console.log("✅ 캡처 완료, 압축 중...");
+          zip.generateAsync({ type: "blob" }).then((blob) => {
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = "carousel_frames.zip";
+            link.click();
+            capturing = false;
+            console.log("💾 다운로드 완료");
+          });
+        }
+      }
+    }
+    animate();
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      applyRendererSize();
+    });
+  </script>
+</body>
+</html>
