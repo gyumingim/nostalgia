@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, DragEvent } from 'react';
 import Head from 'next/head';
+import Image from 'next/image';
 import * as THREE from 'three';
 import PanelItem from '@/components/PanelItem';
 
@@ -28,7 +29,7 @@ export default function ThreeJsCarousel() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const capturingRef = useRef(false);
   const frameCounterRef = useRef(0);
-  // Use any for mediaRecorderRef to avoid TS missing type
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const mediaRecorderRef = useRef<any>(null);
   const chunksRef = useRef<Blob[]>([]);
 
@@ -158,6 +159,7 @@ export default function ThreeJsCarousel() {
     const stream = canvas.captureStream(60);
     const mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9', videoBitsPerSecond: 10_000_000 });
     chunksRef.current = [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     mediaRecorder.ondataavailable = (e: any) => e.data.size > 0 && chunksRef.current.push(e.data);
     mediaRecorder.onstop = () => {
       const blob = new Blob(chunksRef.current, { type: 'video/webm' });
@@ -192,7 +194,7 @@ export default function ThreeJsCarousel() {
             <div className="flex space-x-2 overflow-x-auto p-1">
               {images.map((src, idx) => (
                 <div key={idx} className="relative w-12 h-12">
-                  <img src={src} alt={`img-${idx}`} className="w-full h-full object-cover" />
+                  <Image src={src} alt={`img-${idx}`} width={48} height={48} className="object-cover" unoptimized />
                   <button
                     onClick={() => removeImage(idx)}
                     className="absolute top-0 right-0 bg-red-600 text-white rounded-full w-4 h-4 text-xs"
