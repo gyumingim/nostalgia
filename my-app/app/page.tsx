@@ -28,7 +28,8 @@ export default function ThreeJsCarousel() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const capturingRef = useRef(false);
   const frameCounterRef = useRef(0);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  // Use any for mediaRecorderRef to avoid TS missing type
+  const mediaRecorderRef = useRef<any>(null);
   const chunksRef = useRef<Blob[]>([]);
 
   // Common image processing
@@ -157,7 +158,7 @@ export default function ThreeJsCarousel() {
     const stream = canvas.captureStream(60);
     const mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9', videoBitsPerSecond: 10_000_000 });
     chunksRef.current = [];
-    mediaRecorder.ondataavailable = (e) => e.data.size > 0 && chunksRef.current.push(e.data);
+    mediaRecorder.ondataavailable = (e: any) => e.data.size > 0 && chunksRef.current.push(e.data);
     mediaRecorder.onstop = () => {
       const blob = new Blob(chunksRef.current, { type: 'video/webm' });
       const url = URL.createObjectURL(blob);
@@ -175,7 +176,7 @@ export default function ThreeJsCarousel() {
       {/* Control Panel */}
       <div className="fixed top-0 left-0 w-full bg-white border z-[9999] flex flex-col">
         {/* File Manager Header */}
-        <div className="flex items-center 2 space-x-4 border-b">
+        <div className="flex items-center p-2 space-x-4 border-b">
           <input ref={fileInputRef} type="file" accept="image/webp" multiple onChange={onFileChange} className="hidden" />
           <PanelItem label="Upload">
             <div
@@ -188,7 +189,7 @@ export default function ThreeJsCarousel() {
             </div>
           </PanelItem>
           <PanelItem label="Images">
-            <div className="flex space-x-2 overflow-x-auto 1">
+            <div className="flex space-x-2 overflow-x-auto p-1">
               {images.map((src, idx) => (
                 <div key={idx} className="relative w-12 h-12">
                   <img src={src} alt={`img-${idx}`} className="w-full h-full object-cover" />
@@ -202,9 +203,9 @@ export default function ThreeJsCarousel() {
           </PanelItem>
         </div>
         {/* Main Controls Header */}
-        <div className="flex items-center space-x-4">
+        <div className="flex items-center p-2 space-x-4">
           <PanelItem label="BG Color">
-            <input type="color" value={backgroundColor} onChange={e => setBackgroundColor(e.target.value)} className="w-6 h-6 0 m-0" />
+            <input type="color" value={backgroundColor} onChange={e => setBackgroundColor(e.target.value)} className="w-6 h-6 p-0 m-0" />
           </PanelItem>
           <PanelItem label="Alpha">
             <input type="range" min={0} max={1} step={0.01} value={backgroundAlpha} onChange={e => setBackgroundAlpha(parseFloat(e.target.value))} className="w-24" />
@@ -222,8 +223,7 @@ export default function ThreeJsCarousel() {
             <button
               onClick={startCapture}
               disabled={isCapturing}
-              className={`px-4 ${isCapturing ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100 hover:text-black'} bg-black text-white`}
-            >
+              className={`px-4 ${isCapturing ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100 hover:text-black'} bg-black text-white`}>
               {isCapturing ? 'Capturing...' : 'Capture One Revolution'}
             </button>
           </PanelItem>
