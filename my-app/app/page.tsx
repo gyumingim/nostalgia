@@ -21,7 +21,7 @@ export default function ThreeJsCarousel() {
 
   // Dynamic images state
   const [images, setImages] = useState<string[]>([]);
-  // Capture status for UI
+  // Capture status for UI  
   const [isCapturing, setIsCapturing] = useState(false);
 
   // Refs for Three.js and file input
@@ -37,13 +37,14 @@ export default function ThreeJsCarousel() {
   const processFiles = (files: FileList | File[]) => {
     Array.from(files).forEach((file) => {
       if (file.type !== ALLOWED_TYPE) {
-        alert('Only .webp files are allowed.');
         return;
       }
       const reader = new FileReader();
       reader.onload = () => {
         const src = reader.result as string;
-        const img = new Image();
+        
+        // Next.js + TypeScript에 더 적합한 방식
+        const img = document.createElement('img') as HTMLImageElement;
         img.onload = () => {
           if (img.width === REQUIRED_WIDTH && img.height === REQUIRED_HEIGHT) {
             setImages((prev) => [...prev, src]);
@@ -236,3 +237,7 @@ export default function ThreeJsCarousel() {
     </>
   );
 }
+function alert(arg0: string) {
+  throw new Error('Function not implemented.');
+}
+
