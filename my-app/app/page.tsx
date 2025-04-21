@@ -74,9 +74,6 @@ declare global {
   const window: Window & typeof globalThis;
   const document: Document;
   interface Window {
-    Image: {
-      new(): HTMLImageElement;
-    };
     MediaRecorder: {
       new(stream: MediaStream, options?: MediaRecorderOptions): MediaRecorderType;
     };
