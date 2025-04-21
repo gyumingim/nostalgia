@@ -1,29 +1,23 @@
 "use client"
 
-import { useEffect, useRef, useState, DragEvent } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Head from 'next/head';
 import * as THREE from 'three';
 import PanelItem from '@/components/PanelItem';
 
-// Supported image MIME type and required dimensions
 const ALLOWED_TYPE = 'image/webp';
 const REQUIRED_WIDTH = 1000;
 const REQUIRED_HEIGHT = 1000;
 
 export default function ThreeJsCarousel() {
-  // UI state for customization
   const [backgroundColor, setBackgroundColor] = useState('#000000');
   const [backgroundAlpha, setBackgroundAlpha] = useState(0);
   const [cameraZ, setCameraZ] = useState(800);
   const [spacing, setSpacing] = useState(20);
   const [rotationSpeed, setRotationSpeed] = useState(0.015);
-  const [captureFrames, setCaptureFrames] = useState(600);
   const [rotationDirection, setRotationDirection] = useState<'clockwise' | 'counterclockwise'>('clockwise');
-
-  // Dynamic images state
   const [images, setImages] = useState<string[]>([]);
 
-  // Refs for Three.js and file input
   const containerRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const capturingRef = useRef(false);
@@ -31,7 +25,9 @@ export default function ThreeJsCarousel() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
 
-  // Common image processing
+  // Compute frames needed for one full revolution
+  const getFrameLimit = () => Math.ceil((2 * Math.PI) / rotationSpeed) * 1.2;
+
   const processFiles = (files: FileList | File[]) => {
     Array.from(files).forEach((file) => {
       if (file.type !== ALLOWED_TYPE) {
@@ -55,22 +51,17 @@ export default function ThreeJsCarousel() {
     });
   };
 
-  // Drag & drop handlers
-  const onDragOver = (e: DragEvent) => e.preventDefault();
-  const onDrop = (e: DragEvent) => {
+  const onDragOver = (e: React.DragEvent) => e.preventDefault();
+  const onDrop = (e: React.DragEvent) => {
     e.preventDefault();
     processFiles(e.dataTransfer.files);
   };
-
-  // File input change handler
   const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) processFiles(e.target.files);
     e.target.value = '';
   };
-
   const removeImage = (idx: number) => setImages((prev) => prev.filter((_, i) => i !== idx));
 
-  // Three.js carousel setup
   useEffect(() => {
     if (!containerRef.current) return;
     const scene = new THREE.Scene();
@@ -123,7 +114,7 @@ export default function ThreeJsCarousel() {
       renderer.render(scene, camera);
       if (capturingRef.current) {
         frameCounterRef.current += 1;
-        if (frameCounterRef.current >= captureFrames) {
+        if (frameCounterRef.current >= getFrameLimit()) {
           capturingRef.current = false;
           mediaRecorderRef.current?.stop();
         }
@@ -137,9 +128,8 @@ export default function ThreeJsCarousel() {
       scene.clear();
       containerRef.current?.removeChild(renderer.domElement);
     };
-  }, [images, backgroundColor, backgroundAlpha, cameraZ, spacing, rotationSpeed, captureFrames, rotationDirection]);
+  }, [images, backgroundColor, backgroundAlpha, cameraZ, spacing, rotationSpeed, rotationDirection]);
 
-  // Start WebM capture
   const startCapture = () => {
     if (capturingRef.current || !containerRef.current) return;
     capturingRef.current = true;
@@ -163,11 +153,8 @@ export default function ThreeJsCarousel() {
     <>
       <Head><title>Three.js Carousel - Customizable</title></Head>
 
-      {/* Control Panel */}
       <div className="fixed top-0 left-0 w-full bg-white border z-[9999] flex flex-col">
-        {/* File Manager Header */}
         <div className="flex items-center p-2 space-x-4 border-b">
-          {/* Hidden file input */}
           <input ref={fileInputRef} type="file" accept="image/webp" multiple onChange={onFileChange} className="hidden" />
           <PanelItem label="Upload">
             <div
@@ -193,8 +180,7 @@ export default function ThreeJsCarousel() {
             </div>
           </PanelItem>
         </div>
-        {/* Main Controls Header */}
-        <div className="flex items-center p-2 space-x-4">
+        <div className="flex items-center">
           <PanelItem label="BG Color">
             <input type="color" value={backgroundColor} onChange={e => setBackgroundColor(e.target.value)} className="w-6 h-6 p-0 m-0" />
           </PanelItem>
@@ -210,12 +196,9 @@ export default function ThreeJsCarousel() {
           <PanelItem label="Speed">
             <input type="number" step={0.001} value={rotationSpeed} onChange={e => setRotationSpeed(parseFloat(e.target.value))} className="w-20" />
           </PanelItem>
-          <PanelItem label="Frames">
-            <input type="number" value={captureFrames} onChange={e => setCaptureFrames(parseInt(e.target.value, 10))} className="w-16" />
-          </PanelItem>
           <PanelItem>
             <button onClick={startCapture} className="px-4 hover:bg-gray-100 hover:text-black bg-black text-white">
-              {captureFrames} Frame Capture
+              Capture One Revolution
             </button>
           </PanelItem>
         </div>
