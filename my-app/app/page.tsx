@@ -6,9 +6,121 @@ import Image from 'next/image';
 import * as THREE from 'three';
 import PanelItem from '@/components/PanelItem';
 
+interface DataTransferItem {
+  kind: string;
+  type: string;
+  getAsFile(): File | null;
+}
+
+interface HTMLImageElement extends HTMLElement {
+  onload: () => void;
+  naturalWidth: number;
+  naturalHeight: number;
+  src: string;
+}
+
+interface HTMLAnchorElement extends HTMLElement {
+  href: string;
+  download: string;
+  click(): void;
+}
+
+interface HTMLCanvasElement extends HTMLElement {
+  captureStream(frameRate?: number): MediaStream;
+  parentNode: Node | null;
+  domElement: HTMLCanvasElement;
+}
+
+interface NodeList {
+  [index: number]: Node;
+  length: number;
+  item(index: number): Node | null;
+}
+
+interface Node {
+  parentNode: Node | null;
+  childNodes: NodeList;
+  nodeType: number;
+  nodeName: string;
+}
+
+interface HTMLElement extends Node {
+  style?: CSSStyleDeclaration;
+  classList?: DOMTokenList;
+}
+
+interface MediaRecorderType {
+  start(): void;
+  stop(): void;
+  ondataavailable: (event: MediaRecorderDataAvailableEvent) => void;
+  onstop: () => void;
+}
+
+interface CSSStyleDeclaration {
+  cssText: string;
+  length: number;
+  getPropertyValue(property: string): string;
+  setProperty(property: string, value: string): void;
+}
+
+interface DOMTokenList {
+  add(...tokens: string[]): void;
+  remove(...tokens: string[]): void;
+  contains(token: string): boolean;
+  toggle(token: string): boolean;
+}
+
+declare global {
+  const window: Window & typeof globalThis;
+  const document: Document;
+  interface Window {
+    Image: {
+      new(): HTMLImageElement;
+    };
+    MediaRecorder: {
+      new(stream: MediaStream, options?: MediaRecorderOptions): MediaRecorderType;
+    };
+    alert(message: string): void;
+    innerWidth: number;
+    innerHeight: number;
+    devicePixelRatio: number;
+    addEventListener: (type: string, listener: EventListenerOrEventListenerObject) => void;
+    removeEventListener: (type: string, listener: EventListenerOrEventListenerObject) => void;
+  }
+  interface DataTransfer {
+    items: DataTransferItem[];
+  }
+  interface HTMLInputElement extends HTMLElement {
+    files: FileList | null;
+    value: string;
+    click(): void;
+  }
+  interface HTMLDivElement extends HTMLElement {
+    querySelector(selectors: string): HTMLCanvasElement | null;
+    clientWidth: number;
+    clientHeight: number;
+    contains(node: Node): boolean;
+    appendChild(node: Node): Node;
+    removeChild(node: Node): Node;
+  }
+  interface Document {
+    createElement(tagName: "img"): HTMLImageElement;
+    createElement(tagName: "a"): HTMLAnchorElement;
+    createElement(tagName: string): HTMLElement;
+  }
+  interface Node {
+    parentNode: Node | null;
+  }
+  const alert: (message: string) => void;
+}
+
 const ALLOWED_TYPE = 'image/webp';
 const REQUIRED_WIDTH = 1000;
 const REQUIRED_HEIGHT = 1000;
+// 클라이언트 사이드에서만 사용되는 유틸리티 함수
+const isClient = typeof window !== 'undefined' && window !== null;
+const getWindow = (): Window | null => (typeof window !== 'undefined' ? window : null);
+const getDocument = (): Document | null => (typeof document !== 'undefined' ? document : null);
 
 export default function ThreeJsCarousel() {
   // UI state for customization
@@ -33,6 +145,23 @@ export default function ThreeJsCarousel() {
   const mediaRecorderRef = useRef<any>(null);
   const chunksRef = useRef<Blob[]>([]);
 
+  // 이미지 처리 함수
+  const processImage = (src: string) => {
+    if (!isClient) return;
+    const doc = getDocument();
+    if (!doc) return;
+    
+    const img = doc.createElement('img');
+    img.onload = () => {
+      if (img.naturalWidth === REQUIRED_WIDTH && img.naturalHeight === REQUIRED_HEIGHT) {
+        setImages((prev) => [...prev, src]);
+      } else {
+        window.alert(`Image must be ${REQUIRED_WIDTH}×${REQUIRED_HEIGHT}px.`);
+      }
+    };
+    img.src = src;
+  };
+
   // Common image processing
   const processFiles = (files: FileList | File[]) => {
     Array.from(files).forEach((file) => {
@@ -42,27 +171,22 @@ export default function ThreeJsCarousel() {
       const reader = new FileReader();
       reader.onload = () => {
         const src = reader.result as string;
-        
-        // Next.js + TypeScript에 더 적합한 방식
-        const img = document.createElement('img') as HTMLImageElement;
-        img.onload = () => {
-          if (img.width === REQUIRED_WIDTH && img.height === REQUIRED_HEIGHT) {
-            setImages((prev) => [...prev, src]);
-          } else {
-            alert(`Image must be ${REQUIRED_WIDTH}×${REQUIRED_HEIGHT}px.`);
-          }
-        };
-        img.src = src;
+        processImage(src);
       };
       reader.readAsDataURL(file);
     });
   };
 
   // Drag & drop handlers
-  const onDragOver = (e: DragEvent) => e.preventDefault();
-  const onDrop = (e: DragEvent) => {
+  const onDragOver = (e: DragEvent<HTMLDivElement>) => e.preventDefault();
+  const onDrop = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
-    processFiles(e.dataTransfer.files);
+    const files = e.dataTransfer?.items ? Array.from(e.dataTransfer.items)
+      .filter((item: DataTransferItem) => item.kind === 'file')
+      .map((item: DataTransferItem) => item.getAsFile())
+      .filter((file): file is File => file !== null)
+      : [];
+    processFiles(files);
   };
 
   // File input change handler
@@ -75,30 +199,38 @@ export default function ThreeJsCarousel() {
 
   // Three.js carousel setup
   useEffect(() => {
-    const container = containerRef.current;
+    if (!isClient) return;
+    
+    const container = containerRef.current as HTMLDivElement;
     if (!container) return;
 
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 1, 2000);
+    const win = getWindow();
+    if (!win) return;
+    
+    const width = container.clientWidth || win.innerWidth;
+    const height = container.clientHeight || win.innerHeight;
+    const camera = new THREE.PerspectiveCamera(70, width / height, 1, 2000);
     camera.position.z = cameraZ;
 
     const renderer = new THREE.WebGLRenderer({
       antialias: true,
       preserveDrawingBuffer: true,
       alpha: true,
-      outputColorSpace: THREE.SRGBColorSpace,
     });
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setSize(width, height);
+    renderer.setPixelRatio(win.devicePixelRatio || 1);
     renderer.setClearColor(backgroundColor, backgroundAlpha);
-    container.appendChild(renderer.domElement);
+    container.appendChild(renderer.domElement as unknown as Node);
 
     const onResize = () => {
-      renderer.setSize(window.innerWidth, window.innerHeight);
-      camera.aspect = window.innerWidth / window.innerHeight;
+      const newWidth = container.clientWidth || win.innerWidth;
+      const newHeight = container.clientHeight || win.innerHeight;
+      renderer.setSize(newWidth, newHeight);
+      camera.aspect = newWidth / newHeight;
       camera.updateProjectionMatrix();
     };
-    window.addEventListener('resize', onResize);
+    win.addEventListener('resize', onResize);
 
     const planeSize = 325;
     const count = images.length;
@@ -141,31 +273,43 @@ export default function ThreeJsCarousel() {
 
     return () => {
       cancelAnimationFrame(frameId);
-      window.removeEventListener('resize', onResize);
+      win.removeEventListener('resize', onResize);
       renderer.dispose();
       scene.clear();
-      container.removeChild(renderer.domElement);
+      if (container.contains(renderer.domElement as unknown as Node)) {
+        container.removeChild(renderer.domElement as unknown as Node);
+      }
     };
   }, [images, backgroundColor, backgroundAlpha, cameraZ, spacing, rotationSpeed, rotationDirection]);
 
   // Start WebM capture
-  const startCapture = () => {
+  const startCapture = async () => {
+    if (!isClient) return;
+    
     const container = containerRef.current;
     if (capturingRef.current || !container) return;
+    
+    const win = getWindow();
+    const doc = getDocument();
+    if (!win || !doc) return;
+    
     capturingRef.current = true;
     setIsCapturing(true);
     frameCounterRef.current = 0;
     const canvas = container.querySelector('canvas');
     if (!canvas) return;
     const stream = canvas.captureStream(60);
-    const mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9', videoBitsPerSecond: 10_000_000 });
+    const mediaRecorder = new win.MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9', videoBitsPerSecond: 10_000_000 });
     chunksRef.current = [];
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    mediaRecorder.ondataavailable = (e: any) => e.data.size > 0 && chunksRef.current.push(e.data);
+    mediaRecorder.ondataavailable = (e: MediaRecorderDataAvailableEvent) => e.data.size > 0 && chunksRef.current.push(e.data);
     mediaRecorder.onstop = () => {
       const blob = new Blob(chunksRef.current, { type: 'video/webm' });
       const url = URL.createObjectURL(blob);
-      const a = document.createElement('a'); a.href = url; a.download = 'capture.webm'; a.click(); URL.revokeObjectURL(url);
+      const a = doc.createElement('a');
+      a.href = url;
+      a.download = 'capture.webm';
+      a.click();
+      URL.revokeObjectURL(url);
       setIsCapturing(false);
     };
     mediaRecorderRef.current = mediaRecorder;
@@ -208,19 +352,19 @@ export default function ThreeJsCarousel() {
         {/* Main Controls Header */}
         <div className="flex items-center p-2 space-x-4">
           <PanelItem label="BG Color">
-            <input type="color" value={backgroundColor} onChange={e => setBackgroundColor(e.target.value)} className="w-6 h-6 p-0 m-0" />
+            <input type="color" defaultValue={backgroundColor} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setBackgroundColor(e.target.value)} className="w-6 h-6 p-0 m-0" />
           </PanelItem>
           <PanelItem label="Alpha">
-            <input type="range" min={0} max={1} step={0.01} value={backgroundAlpha} onChange={e => setBackgroundAlpha(parseFloat(e.target.value))} className="w-24" />
+            <input type="range" min={0} max={1} step={0.01} defaultValue={backgroundAlpha} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setBackgroundAlpha(parseFloat(e.target.value))} className="w-24" />
           </PanelItem>
           <PanelItem label="Camera Z">
-            <input type="number" value={cameraZ} onChange={e => setCameraZ(parseInt(e.target.value, 10))} className="w-16" />
+            <input type="number" defaultValue={cameraZ} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCameraZ(parseInt(e.target.value, 10))} className="w-16" />
           </PanelItem>
           <PanelItem label="Spacing">
-            <input type="number" value={spacing} onChange={e => setSpacing(parseInt(e.target.value, 10))} className="w-16" />
+            <input type="number" defaultValue={spacing} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSpacing(parseInt(e.target.value, 10))} className="w-16" />
           </PanelItem>
           <PanelItem label="Speed">
-            <input type="number" step={0.001} value={rotationSpeed} onChange={e => setRotationSpeed(parseFloat(e.target.value))} className="w-20" />
+            <input type="number" step={0.001} defaultValue={rotationSpeed} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setRotationSpeed(parseFloat(e.target.value))} className="w-20" />
           </PanelItem>
           <PanelItem>
             <button
@@ -236,8 +380,5 @@ export default function ThreeJsCarousel() {
       <div ref={containerRef} style={{ width: '100vw', height: '100vh' }} />
     </>
   );
-}
-function alert(arg0: string) {
-  throw new Error('Function not implemented.');
 }
 
