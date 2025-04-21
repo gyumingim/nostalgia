@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, DragEvent } from 'react';
 import Head from 'next/head';
 import * as THREE from 'three';
 import PanelItem from '@/components/PanelItem';
@@ -10,14 +10,20 @@ const REQUIRED_WIDTH = 1000;
 const REQUIRED_HEIGHT = 1000;
 
 export default function ThreeJsCarousel() {
+  // UI state for customization
   const [backgroundColor, setBackgroundColor] = useState('#000000');
   const [backgroundAlpha, setBackgroundAlpha] = useState(0);
   const [cameraZ, setCameraZ] = useState(800);
   const [spacing, setSpacing] = useState(20);
   const [rotationSpeed, setRotationSpeed] = useState(0.015);
-  const [rotationDirection, setRotationDirection] = useState<'clockwise' | 'counterclockwise'>('clockwise');
-  const [images, setImages] = useState<string[]>([]);
+  const [rotationDirection] = useState<'clockwise' | 'counterclockwise'>('clockwise');
 
+  // Dynamic images state
+  const [images, setImages] = useState<string[]>([]);
+  // Capture status for UI
+  const [isCapturing, setIsCapturing] = useState(false);
+
+  // Refs for Three.js and file input
   const containerRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const capturingRef = useRef(false);
@@ -25,9 +31,7 @@ export default function ThreeJsCarousel() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
 
-  // Compute frames needed for one full revolution
-  const getFrameLimit = () => Math.ceil((2 * Math.PI) / rotationSpeed) * 1.2;
-
+  // Common image processing
   const processFiles = (files: FileList | File[]) => {
     Array.from(files).forEach((file) => {
       if (file.type !== ALLOWED_TYPE) {
@@ -51,19 +55,26 @@ export default function ThreeJsCarousel() {
     });
   };
 
-  const onDragOver = (e: React.DragEvent) => e.preventDefault();
-  const onDrop = (e: React.DragEvent) => {
+  // Drag & drop handlers
+  const onDragOver = (e: DragEvent) => e.preventDefault();
+  const onDrop = (e: DragEvent) => {
     e.preventDefault();
     processFiles(e.dataTransfer.files);
   };
+
+  // File input change handler
   const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) processFiles(e.target.files);
     e.target.value = '';
   };
+
   const removeImage = (idx: number) => setImages((prev) => prev.filter((_, i) => i !== idx));
 
+  // Three.js carousel setup
   useEffect(() => {
-    if (!containerRef.current) return;
+    const container = containerRef.current;
+    if (!container) return;
+
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 1, 2000);
     camera.position.z = cameraZ;
@@ -77,7 +88,7 @@ export default function ThreeJsCarousel() {
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setClearColor(backgroundColor, backgroundAlpha);
-    containerRef.current.appendChild(renderer.domElement);
+    container.appendChild(renderer.domElement);
 
     const onResize = () => {
       renderer.setSize(window.innerWidth, window.innerHeight);
@@ -88,7 +99,8 @@ export default function ThreeJsCarousel() {
 
     const planeSize = 325;
     const count = images.length;
-    const radius = (count > 0 ? (planeSize / 2) / Math.sin(Math.PI / count) : 500) + spacing
+    const defaultRadius = count > 0 ? (planeSize / 2) / Math.sin(Math.PI / count) : 500;
+    const radius = defaultRadius + spacing; // allow negative spacing
 
     const group = new THREE.Group();
     const loader = new THREE.TextureLoader();
@@ -108,33 +120,39 @@ export default function ThreeJsCarousel() {
 
     let frameId: number;
     const dirMult = rotationDirection === 'clockwise' ? 1 : -1;
+    const frameLimit = Math.ceil((2 * Math.PI) / rotationSpeed) * 1.2;
+
     const animate = () => {
       frameId = requestAnimationFrame(animate);
       group.rotation.y += rotationSpeed * dirMult;
       renderer.render(scene, camera);
       if (capturingRef.current) {
         frameCounterRef.current += 1;
-        if (frameCounterRef.current >= getFrameLimit()) {
+        if (frameCounterRef.current >= frameLimit) {
           capturingRef.current = false;
           mediaRecorderRef.current?.stop();
         }
       }
     };
     animate();
+
     return () => {
       cancelAnimationFrame(frameId);
       window.removeEventListener('resize', onResize);
       renderer.dispose();
       scene.clear();
-      containerRef.current?.removeChild(renderer.domElement);
+      container.removeChild(renderer.domElement);
     };
   }, [images, backgroundColor, backgroundAlpha, cameraZ, spacing, rotationSpeed, rotationDirection]);
 
+  // Start WebM capture
   const startCapture = () => {
-    if (capturingRef.current || !containerRef.current) return;
+    const container = containerRef.current;
+    if (capturingRef.current || !container) return;
     capturingRef.current = true;
+    setIsCapturing(true);
     frameCounterRef.current = 0;
-    const canvas = containerRef.current.querySelector('canvas');
+    const canvas = container.querySelector('canvas');
     if (!canvas) return;
     const stream = canvas.captureStream(60);
     const mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9', videoBitsPerSecond: 10_000_000 });
@@ -144,6 +162,7 @@ export default function ThreeJsCarousel() {
       const blob = new Blob(chunksRef.current, { type: 'video/webm' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a'); a.href = url; a.download = 'capture.webm'; a.click(); URL.revokeObjectURL(url);
+      setIsCapturing(false);
     };
     mediaRecorderRef.current = mediaRecorder;
     mediaRecorder.start();
@@ -153,8 +172,10 @@ export default function ThreeJsCarousel() {
     <>
       <Head><title>Three.js Carousel - Customizable</title></Head>
 
+      {/* Control Panel */}
       <div className="fixed top-0 left-0 w-full bg-white border z-[9999] flex flex-col">
-        <div className="flex items-center p-2 space-x-4 border-b">
+        {/* File Manager Header */}
+        <div className="flex items-center 2 space-x-4 border-b">
           <input ref={fileInputRef} type="file" accept="image/webp" multiple onChange={onFileChange} className="hidden" />
           <PanelItem label="Upload">
             <div
@@ -167,7 +188,7 @@ export default function ThreeJsCarousel() {
             </div>
           </PanelItem>
           <PanelItem label="Images">
-            <div className="flex space-x-2 overflow-x-auto p-1">
+            <div className="flex space-x-2 overflow-x-auto 1">
               {images.map((src, idx) => (
                 <div key={idx} className="relative w-12 h-12">
                   <img src={src} alt={`img-${idx}`} className="w-full h-full object-cover" />
@@ -180,9 +201,10 @@ export default function ThreeJsCarousel() {
             </div>
           </PanelItem>
         </div>
-        <div className="flex items-center">
+        {/* Main Controls Header */}
+        <div className="flex items-center 2 space-x-4">
           <PanelItem label="BG Color">
-            <input type="color" value={backgroundColor} onChange={e => setBackgroundColor(e.target.value)} className="w-6 h-6 p-0 m-0" />
+            <input type="color" value={backgroundColor} onChange={e => setBackgroundColor(e.target.value)} className="w-6 h-6 0 m-0" />
           </PanelItem>
           <PanelItem label="Alpha">
             <input type="range" min={0} max={1} step={0.01} value={backgroundAlpha} onChange={e => setBackgroundAlpha(parseFloat(e.target.value))} className="w-24" />
@@ -197,8 +219,12 @@ export default function ThreeJsCarousel() {
             <input type="number" step={0.001} value={rotationSpeed} onChange={e => setRotationSpeed(parseFloat(e.target.value))} className="w-20" />
           </PanelItem>
           <PanelItem>
-            <button onClick={startCapture} className="px-4 hover:bg-gray-100 hover:text-black bg-black text-white">
-              Capture One Revolution
+            <button
+              onClick={startCapture}
+              disabled={isCapturing}
+              className={`px-4 ${isCapturing ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100 hover:text-black'} bg-black text-white`}
+            >
+              {isCapturing ? 'Capturing...' : 'Capture One Revolution'}
             </button>
           </PanelItem>
         </div>
