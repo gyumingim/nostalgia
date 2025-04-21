@@ -202,7 +202,7 @@ export default function ThreeJsCarousel() {
           </PanelItem>
         </div>
         {/* Main Controls Header */}
-        <div className="flex items-center 2 space-x-4">
+        <div className="flex items-center space-x-4">
           <PanelItem label="BG Color">
             <input type="color" value={backgroundColor} onChange={e => setBackgroundColor(e.target.value)} className="w-6 h-6 0 m-0" />
           </PanelItem>
